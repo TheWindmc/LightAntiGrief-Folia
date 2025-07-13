@@ -1,16 +1,14 @@
 package me.statuxia.lightantigrief.listener;
 
-import lombok.Getter;
-import me.statuxia.lightantigrief.LightAntiGrief;
-import me.statuxia.lightantigrief.config.LAGConfig;
-import net.kyori.adventure.text.Component;
 import me.statuxia.lightantigrief.LAG;
+import me.statuxia.lightantigrief.config.LAGConfig;
 import me.statuxia.lightantigrief.trigger.BufferTrigger;
 import me.statuxia.lightantigrief.trigger.actions.GriefAction;
 import me.statuxia.lightantigrief.utils.BanUtils;
 import me.statuxia.lightantigrief.utils.IdentifyUtils;
 import me.statuxia.lightantigrief.utils.MessageUtils;
 import me.statuxia.lightantigrief.utils.PlayTime;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -39,14 +37,12 @@ import org.bukkit.projectiles.ProjectileSource;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 import static me.statuxia.lightantigrief.LightAntiGrief.log;
 
 public class GriefListener implements Listener {
-
-    @Getter
-    private static final int trustedTime = LAGConfig.getTrustedTime();
 
     private static final List<Material> itemTriggers = List.of(
             Material.DIAMOND_BLOCK,
@@ -160,6 +156,10 @@ public class GriefListener implements Listener {
             Material.JUNGLE_LOG
     );
 
+    public static int getTrustedTime() {
+        return LAGConfig.getTrustedTime();
+    }
+
     @EventHandler
     public void onClickInventory(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) {
@@ -178,7 +178,7 @@ public class GriefListener implements Listener {
             return;
         }
 
-        if (PlayTime.ofSeconds(player) > trustedTime) {
+        if (PlayTime.ofSeconds(player) > getTrustedTime()) {
             return;
         }
 
@@ -212,20 +212,50 @@ public class GriefListener implements Listener {
             return;
         }
 
+        checkOwnerAndTrigger(player, block, location, event);
+    }
+
+    private void checkOwnerAndTrigger(Player player, Block block, Location location, InventoryClickEvent event) {
         String ownerName = IdentifyUtils.getOwner(block);
         if (ownerName.equals(player.getName())) {
             return;
         }
-        Player owner = Bukkit.getPlayer(ownerName);
-        if (player.getNearbyEntities(20, 20, 20).contains(owner)) {
-            return;
-        }
 
-        checkForTrigger(event, location, player, GriefAction.GET_ITEM);
+        if (LAG.isFolia()) {
+            CompletableFuture.runAsync(() -> {
+                boolean ownerNearby = isOwnerNearby(player, ownerName);
+                if (!ownerNearby) {
+                    player.getScheduler().run(LAG.getInstance(), task -> {
+                        checkForTrigger(event, location, player, GriefAction.GET_ITEM);
+                    }, null);
+                }
+            });
+        } else {
+            Player owner = Bukkit.getPlayer(ownerName);
+            if (owner == null || !player.getNearbyEntities(20, 20, 20).contains(owner)) {
+                checkForTrigger(event, location, player, GriefAction.GET_ITEM);
+            }
+        }
+    }
+
+    private boolean isOwnerNearby(Player player, String ownerName) {
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (online.getName().equals(ownerName)) {
+                Location playerLoc = player.getLocation();
+                Location ownerLoc = online.getLocation();
+                if (playerLoc.getWorld().equals(ownerLoc.getWorld()) &&
+                        playerLoc.distance(ownerLoc) <= 20) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean isPlacing(InventoryClickEvent event) {
-        return event.getAction() == InventoryAction.PLACE_ALL || event.getAction() == InventoryAction.PLACE_ONE || event.getAction() == InventoryAction.PLACE_SOME;
+        return event.getAction() == InventoryAction.PLACE_ALL ||
+                event.getAction() == InventoryAction.PLACE_ONE ||
+                event.getAction() == InventoryAction.PLACE_SOME;
     }
 
     private boolean isEntityHolder(InventoryHolder holder) {
@@ -243,26 +273,14 @@ public class GriefListener implements Listener {
             return;
         }
 
-        Component component = MessageUtils.generateMessage(player, location, action, currentItem.getType());
-        log(MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", ""));
-        if (LAG.getModerators().isEmpty()) {
-            BufferTrigger buffer = new BufferTrigger(player.getUniqueId(), action);
-            BufferTrigger.trigger(buffer);
-
-            if (BufferTrigger.isLimitReached(buffer)) {
-                BanUtils.ban(player.getName());
-            }
-            return;
-        }
-
-        LAG.getModerators().forEach(moderator -> moderator.sendMessage(component));
+        processGriefAction(player, location, action, currentItem.getType());
     }
 
     @EventHandler
     public void onBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
-
         Block block = event.getBlock();
+
         if (!blockTriggers.contains(block.getType())) {
             return;
         }
@@ -271,7 +289,7 @@ public class GriefListener implements Listener {
             return;
         }
 
-        if (PlayTime.ofSeconds(player) > trustedTime) {
+        if (PlayTime.ofSeconds(player) > getTrustedTime()) {
             return;
         }
 
@@ -279,32 +297,30 @@ public class GriefListener implements Listener {
         if (ownerName.equals(player.getName())) {
             return;
         }
-        Player owner = Bukkit.getPlayer(ownerName);
-        if (player.getNearbyEntities(20, 20, 20).contains(owner)) {
-            return;
-        }
 
-        Component component = MessageUtils.generateMessage(player, block.getLocation(), GriefAction.BREAK_BLOCK, block.getType());
-        log(MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", ""));
-        if (LAG.getModerators().isEmpty()) {
-            BufferTrigger buffer = new BufferTrigger(player.getUniqueId(), GriefAction.BREAK_BLOCK);
-            BufferTrigger.trigger(buffer);
-
-            if (BufferTrigger.isLimitReached(buffer)) {
-                BanUtils.ban(player.getName());
+        if (LAG.isFolia()) {
+            CompletableFuture.runAsync(() -> {
+                boolean ownerNearby = isOwnerNearby(player, ownerName);
+                if (!ownerNearby) {
+                    Bukkit.getScheduler().runTask(LAG.getInstance(), () -> {
+                        processGriefAction(player, block.getLocation(), GriefAction.BREAK_BLOCK, block.getType());
+                    });
+                }
+            });
+        } else {
+            Player owner = Bukkit.getPlayer(ownerName);
+            if (owner == null || !player.getNearbyEntities(20, 20, 20).contains(owner)) {
+                processGriefAction(player, block.getLocation(), GriefAction.BREAK_BLOCK, block.getType());
             }
-            return;
         }
-
-        LAG.getModerators().forEach(moderator -> moderator.sendMessage(component));
     }
 
     @EventHandler
     public void onPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
-
         Block block = event.getBlock();
         Material type = block.getType();
+
         if (!explosiveBlockTriggers.contains(type) && !explosiveBedTriggers.contains(type)) {
             return;
         }
@@ -313,7 +329,7 @@ public class GriefListener implements Listener {
             return;
         }
 
-        if (PlayTime.ofSeconds(player) > trustedTime) {
+        if (PlayTime.ofSeconds(player) > getTrustedTime()) {
             return;
         }
 
@@ -321,22 +337,7 @@ public class GriefListener implements Listener {
             return;
         }
 
-        Component component = MessageUtils.generateMessage(player, block.getLocation(), GriefAction.PLACE_BLOCK, type);
-        log(MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", ""));
-        if (LAG.getModerators().isEmpty()) {
-            log("PLACE");
-            BufferTrigger buffer = new BufferTrigger(player.getUniqueId(), GriefAction.PLACE_BLOCK);
-            log("buffer");
-            BufferTrigger.trigger(buffer);
-            log("total - " + BufferTrigger.getTotal(buffer));
-            log("is reached - " + BufferTrigger.isLimitReached(buffer));
-            if (BufferTrigger.isLimitReached(buffer)) {
-                BanUtils.ban(player.getName());
-            }
-            return;
-        }
-
-        LAG.getModerators().forEach(moderator -> moderator.sendMessage(component));
+        processGriefAction(player, block.getLocation(), GriefAction.PLACE_BLOCK, type);
     }
 
     @EventHandler
@@ -349,6 +350,7 @@ public class GriefListener implements Listener {
         if (clickedBlock == null) {
             return;
         }
+
         ItemStack item = event.getItem();
         if (item == null) {
             return;
@@ -359,11 +361,11 @@ public class GriefListener implements Listener {
         }
 
         Player player = event.getPlayer();
-        if (isTrusted(event.getPlayer())) {
+        if (isTrusted(player)) {
             return;
         }
 
-        if (PlayTime.ofSeconds(player) > trustedTime) {
+        if (PlayTime.ofSeconds(player) > getTrustedTime()) {
             return;
         }
 
@@ -371,19 +373,7 @@ public class GriefListener implements Listener {
             return;
         }
 
-        Component component = MessageUtils.generateMessage(player, clickedBlock.getLocation(), GriefAction.MINECART, item.getType());
-        log(MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", ""));
-        if (LAG.getModerators().isEmpty()) {
-            BufferTrigger buffer = new BufferTrigger(player.getUniqueId(), GriefAction.MINECART);
-            BufferTrigger.trigger(buffer);
-
-            if (BufferTrigger.isLimitReached(buffer)) {
-                BanUtils.ban(player.getName());
-            }
-            return;
-        }
-
-        LAG.getModerators().forEach(moderator -> moderator.sendMessage(component));
+        processGriefAction(player, clickedBlock.getLocation(), GriefAction.MINECART, item.getType());
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -403,8 +393,9 @@ public class GriefListener implements Listener {
             }
 
             Component component = MessageUtils.generateMessage(block, GriefAction.EXPLODE, block.getType());
-            log(MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", ""));
-            LAG.getModerators().forEach(moderator -> moderator.sendMessage(component));
+            String plainText = MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", "");
+            log(plainText);
+            sendToModerators(component);
         });
     }
 
@@ -418,16 +409,17 @@ public class GriefListener implements Listener {
         if (clickedBlock == null) {
             return;
         }
+
         if (!clickedBlock.getType().isBurnable() || ignoreBurnable.contains(clickedBlock.getType())) {
             return;
         }
 
         Player player = event.getPlayer();
-        if (isTrusted(event.getPlayer())) {
+        if (isTrusted(player)) {
             return;
         }
 
-        if (PlayTime.ofSeconds(player) > trustedTime) {
+        if (PlayTime.ofSeconds(player) > getTrustedTime()) {
             return;
         }
 
@@ -436,19 +428,7 @@ public class GriefListener implements Listener {
             return;
         }
 
-        Component component = MessageUtils.generateMessage(player, clickedBlock.getLocation(), GriefAction.FIRE_CHARGE, clickedBlock.getType());
-        log(MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", ""));
-        if (LAG.getModerators().isEmpty()) {
-            BufferTrigger buffer = new BufferTrigger(player.getUniqueId(), GriefAction.FIRE_CHARGE);
-            BufferTrigger.trigger(buffer);
-
-            if (BufferTrigger.isLimitReached(buffer)) {
-                BanUtils.ban(player.getName());
-            }
-            return;
-        }
-
-        LAG.getModerators().forEach(moderator -> moderator.sendMessage(component));
+        processGriefAction(player, clickedBlock.getLocation(), GriefAction.FIRE_CHARGE, clickedBlock.getType());
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -461,6 +441,7 @@ public class GriefListener implements Listener {
         if (clickedBlock == null) {
             return;
         }
+
         if (clickedBlock.getType() != Material.OBSIDIAN) {
             return;
         }
@@ -469,7 +450,7 @@ public class GriefListener implements Listener {
             return;
         }
 
-        if (PlayTime.ofSeconds(event.getPlayer()) > trustedTime) {
+        if (PlayTime.ofSeconds(event.getPlayer()) > getTrustedTime()) {
             return;
         }
 
@@ -479,92 +460,55 @@ public class GriefListener implements Listener {
             return;
         }
 
-        Component component = MessageUtils.generateMessage(player, clickedBlock.getLocation(), GriefAction.PLACE_BLOCK, item.getType());
-        log(MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", ""));
-        if (LAG.getModerators().isEmpty()) {
-            BufferTrigger buffer = new BufferTrigger(player.getUniqueId(), GriefAction.PLACE_BLOCK);
-            BufferTrigger.trigger(buffer);
-
-            if (BufferTrigger.isLimitReached(buffer)) {
-                BanUtils.ban(player.getName());
-            }
-            return;
-        }
-
-        LAG.getModerators().forEach(moderator -> moderator.sendMessage(component));
-
+        processGriefAction(player, clickedBlock.getLocation(), GriefAction.PLACE_BLOCK, item.getType());
     }
 
     @EventHandler
     public void onEntityExplode(EntityExplodeEvent event) {
         Entity entity = event.getEntity();
+        Player responsiblePlayer = null;
 
         if (event.getEntity() instanceof TNTPrimed primed) {
-            if (primed.getSource() != null && primed.getSource() instanceof Player player) {
-                checkExplode(player, event.blockList());
-                return;
+            if (primed.getSource() instanceof Player player) {
+                responsiblePlayer = player;
+            } else if (primed.getSource() instanceof Projectile projectile) {
+                ProjectileSource shooter = projectile.getShooter();
+                if (shooter instanceof Player player) {
+                    responsiblePlayer = player;
+                } else if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
+                    responsiblePlayer = player;
+                }
             }
-
-            if (!(primed.getSource() instanceof Projectile projectile)) {
-                return;
-            }
-            ProjectileSource shooter = projectile.getShooter();
-            if (shooter instanceof Player player) {
-                checkExplode(player, event.blockList());
-                return;
-            }
-            if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
-                checkExplode(player, event.blockList());
-                return;
-            }
-        }
-
-        if (entity instanceof EnderCrystal crystal) {
+        } else if (entity instanceof EnderCrystal crystal) {
             EntityDamageEvent lastDamageCause = crystal.getLastDamageCause();
-            if (lastDamageCause == null) {
-                return;
+            if (lastDamageCause instanceof EntityDamageByEntityEvent damageByEntityEvent) {
+                if (damageByEntityEvent.getDamager() instanceof Player player) {
+                    responsiblePlayer = player;
+                } else if (damageByEntityEvent.getDamager() instanceof Projectile projectile) {
+                    ProjectileSource shooter = projectile.getShooter();
+                    if (shooter instanceof Player player) {
+                        responsiblePlayer = player;
+                    } else if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
+                        responsiblePlayer = player;
+                    }
+                }
             }
-
-            if (!(lastDamageCause instanceof EntityDamageByEntityEvent damageByEntityEvent)) {
-                return;
-            }
-
-            if (damageByEntityEvent.getDamager() instanceof Player player) {
-                checkExplode(player, event.blockList());
-                return;
-            }
-            if (!(damageByEntityEvent.getDamager() instanceof Projectile projectile)) {
-                return;
-            }
+        } else if (entity instanceof Projectile projectile) {
             ProjectileSource shooter = projectile.getShooter();
             if (shooter instanceof Player player) {
-                checkExplode(player, event.blockList());
-                return;
+                responsiblePlayer = player;
+            } else if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
+                responsiblePlayer = player;
             }
-            if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
-                checkExplode(player, event.blockList());
-                return;
-            }
-        }
-
-        if (entity instanceof Projectile projectile) {
-            ProjectileSource shooter = projectile.getShooter();
-            if (shooter instanceof Player player) {
-                checkExplode(player, event.blockList());
-                return;
-            }
-            if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
-                checkExplode(player, event.blockList());
-                return;
-            }
-        }
-
-        if (entity instanceof Creeper creeper) {
+        } else if (entity instanceof Creeper creeper) {
             LivingEntity target = creeper.getTarget();
-            if (!(target instanceof Player player)) {
-                return;
+            if (target instanceof Player player) {
+                responsiblePlayer = player;
             }
-            checkExplode(player, event.blockList());
+        }
+
+        if (responsiblePlayer != null) {
+            checkExplode(responsiblePlayer, event.blockList());
         }
     }
 
@@ -572,7 +516,8 @@ public class GriefListener implements Listener {
         if (isTrusted(player)) {
             return;
         }
-        if (PlayTime.ofSeconds(player) > trustedTime) {
+
+        if (PlayTime.ofSeconds(player) > getTrustedTime()) {
             return;
         }
 
@@ -584,23 +529,51 @@ public class GriefListener implements Listener {
                 return;
             }
 
-            Component component = MessageUtils.generateMessage(player, block.getLocation(), GriefAction.EXPLODE, block.getType());
-            log(MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", ""));
-            if (LAG.getModerators().isEmpty()) {
-                BufferTrigger buffer = new BufferTrigger(player.getUniqueId(), GriefAction.EXPLODE);
-                BufferTrigger.trigger(buffer);
-
-                if (BufferTrigger.isLimitReached(buffer)) {
-                    BanUtils.ban(player.getName());
-                }
-                return;
-            }
-
-            LAG.getModerators().forEach(moderator -> moderator.sendMessage(component));
+            processGriefAction(player, block.getLocation(), GriefAction.EXPLODE, block.getType());
         });
     }
 
+    private void processGriefAction(Player player, Location location, GriefAction action, Material material) {
+        Component component = MessageUtils.generateMessage(player, location, action, material);
+        String plainText = MessageUtils.plainText(component).replaceAll("§[0-9abcdefkmonlr]", "");
+        log(plainText);
+
+        Set<Player> moderators = LAG.getModerators();
+        if (moderators.isEmpty()) {
+            BufferTrigger buffer = new BufferTrigger(player.getUniqueId(), action);
+            BufferTrigger.trigger(buffer);
+
+            if (BufferTrigger.isLimitReached(buffer)) {
+                if (LAG.isFolia()) {
+                    Bukkit.getAsyncScheduler().runNow(LAG.getInstance(), task -> {
+                        BanUtils.ban(player.getName());
+                    });
+                } else {
+                    BanUtils.ban(player.getName());
+                }
+            }
+        } else {
+            sendToModerators(component);
+        }
+    }
+
+    private void sendToModerators(Component message) {
+        Set<Player> moderators = LAG.getModerators();
+        if (LAG.isFolia()) {
+            moderators.forEach(moderator -> {
+                moderator.getScheduler().run(LAG.getInstance(), task -> {
+                    moderator.sendMessage(message);
+                }, null);
+            });
+        } else {
+            moderators.forEach(moderator -> moderator.sendMessage(message));
+        }
+    }
+
     public static boolean isTrusted(Player player) {
+        if (player.getAddress() == null || player.getAddress().getAddress() == null) {
+            return isTrusted(player.getName());
+        }
         return isTrusted(player.getName()) || LAG.getTrustedIPs().contains(player.getAddress().getAddress().getHostAddress());
     }
 

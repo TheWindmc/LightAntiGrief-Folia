@@ -1,31 +1,88 @@
 package me.statuxia.lightantigrief.trigger.actions;
 
 import lombok.Getter;
+import me.statuxia.lightantigrief.config.LAGConfig;
 import net.kyori.adventure.text.Component;
 
-import static me.statuxia.lightantigrief.config.LAGConfig.*;
-
+@Getter
 public enum GriefAction {
 
-    FIRE_CHARGE(getFireCharge(), Component.text(" sets the fire on ")),
-    GET_ITEM(getGetItem(), Component.text(" took ")),
-    PUT_ITEM(getPutItem(), Component.text(" put ")),
-    BREAK_BLOCK(getBreakBlock(), Component.text(" broke ")),
-    PLACE_BLOCK(getPlaceBlock(), Component.text(" placed ")),
-    MINECART(getMinecart(), Component.text(" placed ")),
-    EXPLODE(getExplode(), Component.text(" exploded "));
+    FIRE_CHARGE(Component.text(" sets the fire on ")) {
+        @Override
+        public int getLimitTriggers() {
+            return LAGConfig.getFireCharge();
+        }
+    },
+    GET_ITEM(Component.text(" took ")) {
+        @Override
+        public int getLimitTriggers() {
+            return LAGConfig.getGetItem();
+        }
+    },
+    PUT_ITEM(Component.text(" put ")) {
+        @Override
+        public int getLimitTriggers() {
+            return LAGConfig.getPutItem();
+        }
+    },
+    BREAK_BLOCK(Component.text(" broke ")) {
+        @Override
+        public int getLimitTriggers() {
+            return LAGConfig.getBreakBlock();
+        }
+    },
+    PLACE_BLOCK(Component.text(" placed ")) {
+        @Override
+        public int getLimitTriggers() {
+            return LAGConfig.getPlaceBlock();
+        }
+    },
+    MINECART(Component.text(" placed ")) {
+        @Override
+        public int getLimitTriggers() {
+            return LAGConfig.getMinecart();
+        }
+    },
+    EXPLODE(Component.text(" exploded ")) {
+        @Override
+        public int getLimitTriggers() {
+            return LAGConfig.getExplode();
+        }
+    };
 
-    private final int limit;
-    @Getter
     private final Component message;
 
-    GriefAction(int limit, Component message) {
-        this.limit = limit;
+    GriefAction(Component message) {
         this.message = message;
     }
 
-    public int getLimitTriggers() {
-        return limit;
+    /**
+     * Получить лимит триггеров для данного действия
+     * @return количество триггеров до срабатывания защиты
+     */
+    public abstract int getLimitTriggers();
+
+    /**
+     * Получить читаемое название действия
+     * @return название действия
+     */
+    public String getActionName() {
+        return name().toLowerCase().replace("_", " ");
     }
 
+    /**
+     * Проверить, является ли действие взрывом
+     * @return true если действие связано со взрывом
+     */
+    public boolean isExplosive() {
+        return this == EXPLODE || this == PLACE_BLOCK;
+    }
+
+    /**
+     * Проверить, является ли действие работой с инвентарем
+     * @return true если действие связано с инвентарем
+     */
+    public boolean isInventoryAction() {
+        return this == GET_ITEM || this == PUT_ITEM;
+    }
 }

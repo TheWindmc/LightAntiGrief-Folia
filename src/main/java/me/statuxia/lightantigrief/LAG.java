@@ -49,6 +49,18 @@ public class LAG {
     }
 
     public static void addTrustedIp(String hostAddress) {
-        LightAntiGrief.getTrustedIPs().add(hostAddress);
+        LightAntiGrief.addTrustedIp(hostAddress);
     }
+
+    public static boolean isFolia() {
+        return LightAntiGrief.isFolia();
+    }
+
+    public static void log(String message) {
+        LightAntiGrief.log(message);
+    }
+
+//    public static void log(String message, java.util.logging.Level level) {
+//        LightAntiGrief.log(message, level);
+//    }
 }

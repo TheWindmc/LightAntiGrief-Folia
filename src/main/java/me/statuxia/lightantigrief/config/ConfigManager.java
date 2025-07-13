@@ -10,15 +10,19 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class ConfigManager {
     private final Path path;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     @Getter
-    private JSONObject jsonObject;
+    private volatile JSONObject jsonObject;
 
     @Getter
-    private boolean created = false;
+    private volatile boolean created = false;
 
     public ConfigManager(@NotNull String path) throws IOException {
         this.path = getPath(path);
@@ -35,29 +39,93 @@ public class ConfigManager {
     }
 
     private void create() throws IOException {
-        if (!Files.isDirectory(path.getParent())) {
-            Files.createDirectories(path.getParent());
-            created = true;
-        }
-        if (Files.notExists(path)) {
-            Files.createFile(path);
-            created = true;
+        lock.writeLock().lock();
+        try {
+            if (!Files.isDirectory(path.getParent())) {
+                Files.createDirectories(path.getParent());
+                created = true;
+            }
+            if (Files.notExists(path)) {
+                Files.createFile(path);
+                Files.writeString(path, "{}", StandardCharsets.UTF_8);
+                created = true;
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 
     public void updateFile(@NotNull JSONObject jsonObject, boolean saveInObject) throws IOException {
-        if (saveInObject) {
-            this.jsonObject = jsonObject;
+        lock.writeLock().lock();
+        try {
+            if (saveInObject) {
+                this.jsonObject = jsonObject;
+            }
+            Files.writeString(path, jsonObject.toString(2), StandardCharsets.UTF_8,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.CREATE);
+        } finally {
+            lock.writeLock().unlock();
         }
-        Files.writeString(path, jsonObject.toString(), StandardCharsets.UTF_8);
     }
 
     public @NotNull JSONObject getObject() throws IOException {
-        create();
+        lock.readLock().lock();
         try {
-            return new JSONObject(Files.readString(path, StandardCharsets.UTF_8));
-        } catch (JSONException e) {
-            return new JSONObject();
+            if (Files.notExists(path)) {
+                return new JSONObject();
+            }
+
+            String content = Files.readString(path, StandardCharsets.UTF_8);
+            if (content.isEmpty()) {
+                return new JSONObject();
+            }
+
+            try {
+                return new JSONObject(content);
+            } catch (JSONException e) {
+                return new JSONObject();
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void reloadConfig() throws IOException {
+        lock.writeLock().lock();
+        try {
+            this.jsonObject = getObject();
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    public boolean has(@NotNull String key) {
+        lock.readLock().lock();
+        try {
+            return jsonObject.has(key);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public Object get(@NotNull String key) {
+        lock.readLock().lock();
+        try {
+            return jsonObject.opt(key);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public void set(@NotNull String key, Object value) throws IOException {
+        lock.writeLock().lock();
+        try {
+            jsonObject.put(key, value);
+            updateFile(jsonObject, false);
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 }

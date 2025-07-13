@@ -10,6 +10,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -17,6 +18,7 @@ public class MarkTrusted implements TabExecutor {
     @Override
     public boolean onCommand(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
         if (!(commandSender instanceof Player player)) {
+            commandSender.sendMessage(Component.text("§7This command can only be used by players!"));
             return false;
         }
 
@@ -25,27 +27,56 @@ public class MarkTrusted implements TabExecutor {
             return false;
         }
 
-        try {
-            String playerName = strings[0];
-            if (playerName.length() > 16) {
-                player.sendMessage(Component.text("§7Nickname must not be more than 16 characters"));
-                return false;
-            }
-            if (!LAG.addTrustedPlayer(playerName)) {
-                LAG.removeTrustedPlayer(playerName);
-                player.sendMessage(Component.text("§7Nickname Deleted"));
-            } else {
-                player.sendMessage(Component.text("§7Nickname Added"));
-            }
-            return true;
-        } catch (Exception ignored) {
-            player.sendMessage(Component.text("§7There is no target. Type /marktrusted Player"));
+        if (strings.length == 0) {
+            player.sendMessage(Component.text("§7Usage: /marktrusted <player>"));
             return false;
         }
+
+        String playerName = strings[0];
+        if (playerName.length() > 16) {
+            player.sendMessage(Component.text("§7Nickname must not be more than 16 characters"));
+            return false;
+        }
+
+        if (LAG.isFolia()) {
+            Bukkit.getAsyncScheduler().runNow(LAG.getInstance(), task -> {
+                boolean added = LAG.addTrustedPlayer(playerName);
+                if (!added) {
+                    LAG.removeTrustedPlayer(playerName);
+                    player.sendMessage(Component.text("§7Player §e" + playerName + " §7removed from trusted list"));
+                } else {
+                    player.sendMessage(Component.text("§7Player §e" + playerName + " §7added to trusted list"));
+                }
+            });
+        } else {
+            boolean added = LAG.addTrustedPlayer(playerName);
+            if (!added) {
+                LAG.removeTrustedPlayer(playerName);
+                player.sendMessage(Component.text("§7Player §e" + playerName + " §7removed from trusted list"));
+            } else {
+                player.sendMessage(Component.text("§7Player §e" + playerName + " §7added to trusted list"));
+            }
+        }
+
+        return true;
     }
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
-        return Bukkit.getOnlinePlayers().stream().map(Player::getName).filter(str -> str.toLowerCase(Locale.ROOT).startsWith(strings[0])).toList();
+        if (strings.length != 1) {
+            return new ArrayList<>();
+        }
+
+        String prefix = strings[0].toLowerCase(Locale.ROOT);
+        List<String> suggestions = new ArrayList<>();
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            String name = player.getName();
+            if (name.toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                suggestions.add(name);
+            }
+        }
+
+        return suggestions;
     }
 }

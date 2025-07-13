@@ -2,9 +2,9 @@ name: LightAntiGrief
 author: 'Statuxia'
 version: '${version}'
 main: me.statuxia.lightantigrief.LightAntiGrief
-api-version: '1.20'
+api-version: '1.21'
 depend: [CoreProtect]
-
+folia-supported: true
 
 permissions:
   lag.moder:
