@@ -81,8 +81,8 @@ public final class LightAntiGrief extends JavaPlugin {
         return trustedPlayers.add(playerName.toLowerCase(Locale.ROOT));
     }
 
-    public static void addTrustedIp(String ip) {
-        trustedIPs.add(ip);
+    public static boolean addTrustedIp(String ip) {
+        return trustedIPs.add(ip);
     }
 
     @Override
@@ -101,12 +101,9 @@ public final class LightAntiGrief extends JavaPlugin {
         coreProtectAPI = getCoreProtect();
         if (coreProtectAPI == null) {
             log("CoreProtect not found. Some features will be disabled.", Level.WARNING);
-            // Не отключаем плагин, просто предупреждаем
         } else {
             log("CoreProtect found and loaded successfully");
         }
-
-        log("It is not recommended to use at the beginning of the game. It is advisable to wait 2-3 days irl", Level.WARNING);
 
         if (isFolia) {
             Bukkit.getGlobalRegionScheduler().run(this, task -> {
@@ -116,8 +113,8 @@ public final class LightAntiGrief extends JavaPlugin {
             processOnlinePlayers();
         }
 
-        Objects.requireNonNull(Bukkit.getPluginCommand("tpworld")).setExecutor(new TPWorld());
-        Objects.requireNonNull(Bukkit.getPluginCommand("marktrusted")).setExecutor(new MarkTrusted());
+        Bukkit.getPluginCommand("tpworld").setExecutor(new TPWorld());
+        Bukkit.getPluginCommand("marktrusted").setExecutor(new MarkTrusted());
         Bukkit.getPluginManager().registerEvents(new GriefListener(), this);
         Bukkit.getPluginManager().registerEvents(new ModeratorListener(), this);
         Bukkit.getPluginManager().registerEvents(new CheckPlayerListener(), this);

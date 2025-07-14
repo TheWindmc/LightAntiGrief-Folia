@@ -475,8 +475,6 @@ public class GriefListener implements Listener {
                 ProjectileSource shooter = projectile.getShooter();
                 if (shooter instanceof Player player) {
                     responsiblePlayer = player;
-                } else if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
-                    responsiblePlayer = player;
                 }
             }
         } else if (entity instanceof EnderCrystal crystal) {
@@ -488,8 +486,6 @@ public class GriefListener implements Listener {
                     ProjectileSource shooter = projectile.getShooter();
                     if (shooter instanceof Player player) {
                         responsiblePlayer = player;
-                    } else if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
-                        responsiblePlayer = player;
                     }
                 }
             }
@@ -497,13 +493,13 @@ public class GriefListener implements Listener {
             ProjectileSource shooter = projectile.getShooter();
             if (shooter instanceof Player player) {
                 responsiblePlayer = player;
-            } else if (shooter instanceof Mob mob && mob.getTarget() instanceof Player player) {
-                responsiblePlayer = player;
             }
         } else if (entity instanceof Creeper creeper) {
-            LivingEntity target = creeper.getTarget();
-            if (target instanceof Player player) {
-                responsiblePlayer = player;
+            if (!LAG.isFolia()) {
+                LivingEntity target = creeper.getTarget();
+                if (target instanceof Player player) {
+                    responsiblePlayer = player;
+                }
             }
         }
 

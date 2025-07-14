@@ -14,18 +14,9 @@ public record BufferTrigger(UUID playerUUID, GriefAction action) {
     private static final Map<BufferTrigger, Trigger> BUFFER = new ConcurrentHashMap<>();
     private static final long CLEANUP_INTERVAL = 20L * 60 * 5; // 5 минут
 
-    static {
-        // Запускаем задачу очистки устаревших триггеров
-        if (LAG.getInstance() != null) {
-            scheduleCleanup();
-        }
-    }
-
     private static void scheduleCleanup() {
         if (LAG.isFolia()) {
-            Bukkit.getAsyncScheduler().runAtFixedRate(LAG.getInstance(), task -> {
-                cleanupExpiredTriggers();
-            }, 0, CLEANUP_INTERVAL * 50, java.util.concurrent.TimeUnit.MILLISECONDS);
+            Bukkit.getAsyncScheduler().runAtFixedRate(LAG.getInstance(), task -> cleanupExpiredTriggers(), 0, CLEANUP_INTERVAL * 50, java.util.concurrent.TimeUnit.MILLISECONDS);
         } else {
             Bukkit.getScheduler().runTaskTimerAsynchronously(LAG.getInstance(), BufferTrigger::cleanupExpiredTriggers, 0L, CLEANUP_INTERVAL);
         }
@@ -60,7 +51,6 @@ public record BufferTrigger(UUID playerUUID, GriefAction action) {
         int randomBonus = 0;
 
         if (LAGConfig.getTriggerRandomBonus()) {
-            // Используем UUID игрока как seed для консистентности
             randomBonus = Math.abs(buffer.playerUUID.hashCode() % 7);
         }
 
@@ -86,7 +76,6 @@ public record BufferTrigger(UUID playerUUID, GriefAction action) {
     }
 
     public static void reload() {
-        // Перезапускаем задачу очистки при перезагрузке конфига
         if (LAG.getInstance() != null) {
             if (LAG.isFolia()) {
                 Bukkit.getAsyncScheduler().cancelTasks(LAG.getInstance());
